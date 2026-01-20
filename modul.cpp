@@ -2,128 +2,167 @@
 #include <iostream>
 #include <vector>
 #include <queue>
-#include <stack>
 #include <cstdlib>
 #include <ctime>
 #include <limits>
 #include <string>
 #include <fstream>
 #include <sstream>
+#include <algorithm>
 
 using namespace std;
 
-// направления
+// Направления движения
 const int dx[4] = {-1, 0, 1, 0};
 const int dy[4] = {0, 1, 0, -1};
-// функции для работы с лабиринтом
+
+// Функции для работы с лабиринтом
+
 MazeData* createMaze(int width, int height) {
     MazeData* maze = new MazeData;
-    // нечетные размеры для правильной генерации
+    
+    // Делаем размеры нечетными для правильной генерации
     maze->width = width;
     maze->height = height;
     if (maze->width % 2 == 0) maze->width++;
     if (maze->height % 2 == 0) maze->height++;
-    // инициализация
+    
+    // Инициализация матриц
     maze->grid.resize(maze->height, vector<char>(maze->width, '#'));
     maze->visited.resize(maze->height, vector<bool>(maze->width, false));
     maze->dist.resize(maze->height, vector<int>(maze->width, -1));
+    
     return maze;
 }
-// создание лабиринта
+
 void generateMaze(MazeData* maze) {
     srand(time(nullptr));
-    // начальная точка для генерации
-    int startX = 1, startY = 1;
-    stack<Point> stack;
-    Point startPoint = {startX, startY};
-    stack.push(startPoint);
-    maze->grid[startX][startY] = '.';
-    vector<int> directions = {0, 1, 2, 3};
-    while (!stack.empty()) {
-        Point current = stack.top();
-        int x = current.x;
-        int y = current.y;
-        // направления
-        for (int i = 0; i < 4; i++) {
-            int swapWith = rand() % 4;
-            int temp = directions[i];
-            directions[i] = directions[swapWith];
-            directions[swapWith] = temp;
-        }
-        bool found = false;
-        for (int dir : directions) {
-            int nx = x + dx[dir] * 2;
-            int ny = y + dy[dir] * 2;
-            if (nx >= 1 && nx < maze->height-1 && ny >= 1 && ny < maze->width-1 && 
-                maze->grid[nx][ny] == '#') {
-                // убираем стену между текущей и новой точкой
-                maze->grid[x + dx[dir]][y + dy[dir]] = '.';
-                maze->grid[nx][ny] = '.';
-                Point newPoint = {nx, ny};
-                stack.push(newPoint);
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            stack.pop();
+    
+    // 1. Сначала все стены
+    for (int i = 0; i < maze->height; i++) {
+        for (int j = 0; j < maze->width; j++) {
+            maze->grid[i][j] = '#';
         }
     }
+    
+    // 2. Создаем сетку проходов (каждая вторая клетка)
+    for (int i = 1; i < maze->height - 1; i += 2) {
+        for (int j = 1; j < maze->width - 1; j += 2) {
+            maze->grid[i][j] = '.';
+        }
+    }
+    
+    // 3. Соединяем проходы (пробиваем стены между ними)
+    for (int i = 2; i < maze->height - 1; i += 2) {
+        for (int j = 2; j < maze->width - 1; j += 2) {
+            // Вертикальные соединения (между клетками сверху и снизу)
+            if (i < maze->height - 2 && rand() % 2 == 0) {
+                maze->grid[i][j-1] = '.';
+            }
+            // Горизонтальные соединения (между клетками слева и справа)
+            if (j < maze->width - 2 && rand() % 2 == 0) {
+                maze->grid[i-1][j] = '.';
+            }
+        }
+    }
+    
+    // 4. Гарантируем проходимость от старта к финишу
+    // Создаем прямой путь по периметру
+    for (int j = 1; j < maze->width - 1; j++) {
+        maze->grid[1][j] = '.';                     // Вторая строка
+        maze->grid[maze->height-2][j] = '.';        // Предпоследняя строка
+    }
+    
+    // Соединяем вертикально
+    for (int i = 1; i < maze->height - 1; i++) {
+        maze->grid[i][1] = '.';                     // Второй столбец
+        maze->grid[i][maze->width-2] = '.';         // Предпоследний столбец
+    }
+    
+    // 5. Добавляем случайные проходы
+    int extraPassages = (maze->width * maze->height) / 20; // 5% от всех клеток
+    for (int i = 0; i < extraPassages; i++) {
+        int x = rand() % (maze->height - 2) + 1;
+        int y = rand() % (maze->width - 2) + 1;
+        maze->grid[x][y] = '.';
+    }
+    
     setStartAndFinish(maze);
 }
 
 void setStartAndFinish(MazeData* maze) {
-    // старт
+    // Старт в левом верхнем углу
     maze->start = {0, 1};
     maze->grid[maze->start.x][maze->start.y] = 'S';
     maze->visited[maze->start.x][maze->start.y] = true;
     
-    // финиш
+    // Финиш в правом нижнем углу
     maze->finish = {maze->height - 1, maze->width - 2};
     maze->grid[maze->finish.x][maze->finish.y] = 'F';
 }
 
 int findShortestPath(MazeData* maze) {
-    // матрица расстояния
+    // 1. Создаем матрицу расстояний
     for (int i = 0; i < maze->height; i++) {
         for (int j = 0; j < maze->width; j++) {
-            maze->dist[i][j] = -1;
+            maze->dist[i][j] = -1;  // -1 = не посещено
         }
     }
-// волновой алгоритм
-    queue<Point> q;
-    q.push(maze->start);
+    
+    // 2. Два массива для текущей и следующей волны
+    vector<Point> currentWave;
+    vector<Point> nextWave;
+    
+    // 3. Начинаем со старта
+    currentWave.push_back(maze->start);
     maze->dist[maze->start.x][maze->start.y] = 0;
-    while (!q.empty()) {
-        Point current = q.front();
-        q.pop();
-        // финиш
-        if (current.x == maze->finish.x && current.y == maze->finish.y) {
-            return maze->dist[current.x][current.y];
-        }
+    
+    int distance = 0;
+    
+    // 4. Пока есть клетки в текущей волне
+    while (!currentWave.empty()) {
+        distance++;
         
-        //проверяем все направления
-        for (int i = 0; i < 4; i++) {
-            int nx = current.x + dx[i];
-            int ny = current.y + dy[i];
+        // 5. Обрабатываем ВСЕ клетки текущей волны
+        for (Point current : currentWave) {
+            // Если это финиш - возвращаем расстояние
+            if (current.x == maze->finish.x && current.y == maze->finish.y) {
+                return maze->dist[current.x][current.y];
+            }
             
-            // проверяем, что точка в пределах лабиринта 
-            if (nx >= 0 && nx < maze->height && ny >= 0 && ny < maze->width && 
-                maze->grid[nx][ny] != '#' && maze->dist[nx][ny] == -1) {
-                maze->dist[nx][ny] = maze->dist[current.x][current.y] + 1;
-                Point nextPoint = {nx, ny};
-                q.push(nextPoint);
+            // 6. Проверяем 4 направления
+            for (int dir = 0; dir < 4; dir++) {
+                int nx = current.x + dx[dir];
+                int ny = current.y + dy[dir];
+                
+                // Проверяем условия
+                if (nx >= 0 && nx < maze->height && 
+                    ny >= 0 && ny < maze->width &&
+                    maze->grid[nx][ny] != '#' && 
+                    maze->dist[nx][ny] == -1) {
+                    
+                    // Нашли новую клетку!
+                    maze->dist[nx][ny] = maze->dist[current.x][current.y] + 1;
+                    nextWave.push_back({nx, ny});
+                }
             }
         }
+        
+        // 7. Переходим к следующей волне
+        currentWave = nextWave;
+        nextWave.clear();  // Очищаем для следующей итерации
     }
-    return -1;
+    
+    return -1;  // Путь не найден
 }
-// интерфейс при игре
+
 void displayMaze(const MazeData* maze, Point player) {
     system("cls");
+    
     cout << "================================" << endl;
     cout << "          ЛАБИРИНТ" << endl;
     cout << "================================" << endl << endl;
+    
     for (int i = 0; i < maze->height; i++) {
         for (int j = 0; j < maze->width; j++) {
             if (i == player.x && j == player.y) {
@@ -139,6 +178,7 @@ void displayMaze(const MazeData* maze, Point player) {
         }
         cout << endl;
     }
+    
     cout << "\n==========================================" << endl;
     cout << "Управление: W - вверх, S - вниз, A - влево, D - вправо" << endl;
     cout << "Сохранение: E - сохранить игру" << endl;
@@ -146,43 +186,47 @@ void displayMaze(const MazeData* maze, Point player) {
     cout << "Цель: дойти от S (старт) до F (финиш)" << endl;
     cout << "==========================================" << endl;
 }
-//
+
 void markVisited(MazeData* maze, Point p) {
     if (p.x >= 0 && p.x < maze->height && p.y >= 0 && p.y < maze->width) {
         maze->visited[p.x][p.y] = true;
     }
 }
-//
+
 bool isValidMove(const MazeData* maze, Point p) {
     return p.x >= 0 && p.x < maze->height && p.y >= 0 && p.y < maze->width && 
            maze->grid[p.x][p.y] != '#';
 }
-//
+
 bool saveMazeToFile(const MazeData* maze, const string& filename, Point player, int moves) {
     ofstream file(filename);
     if (!file.is_open()) {
         return false;
     }
+    
     file << maze->width << " " << maze->height << endl;
     file << player.x << " " << player.y << " " << moves << endl;
     file << maze->start.x << " " << maze->start.y << endl;
     file << maze->finish.x << " " << maze->finish.y << endl;
+    
     for (int i = 0; i < maze->height; i++) {
         for (int j = 0; j < maze->width; j++) {
             file << maze->grid[i][j];
         }
         file << endl;
     }
+    
     for (int i = 0; i < maze->height; i++) {
         for (int j = 0; j < maze->width; j++) {
             file << (maze->visited[i][j] ? '1' : '0');
         }
         file << endl;
     }
+    
     file.close();
     return true;
 }
-//
+
 MazeData* loadMazeFromFile(const string& filename, Point& player, int& moves) {
     ifstream file(filename);
     if (!file.is_open()) {
@@ -221,17 +265,19 @@ MazeData* loadMazeFromFile(const string& filename, Point& player, int& moves) {
     
     file.close();
     
-    // восстанавливаем символы
+    // Восстанавливаем символы
     maze->grid[maze->start.x][maze->start.y] = 'S';
     maze->grid[maze->finish.x][maze->finish.y] = 'F';
     
     return maze;
 }
-// отчиска лабиринта 
+
 void freeMaze(MazeData* maze) {
     delete maze;
 }
-// функции для игры и всякие проверки
+
+// Функции для игры
+
 GameState* createGame(int width, int height) {
     GameState* game = new GameState;
     game->maze = createMaze(width, height);
@@ -241,7 +287,7 @@ GameState* createGame(int width, int height) {
     game->shortestPath = findShortestPath(game->maze);
     return game;
 }
-//
+
 GameState* loadGameFromMaze(MazeData* maze, Point player, int moves) {
     GameState* game = new GameState;
     game->maze = maze;
@@ -250,7 +296,7 @@ GameState* loadGameFromMaze(MazeData* maze, Point player, int moves) {
     game->shortestPath = findShortestPath(maze);
     return game;
 }
-//
+
 bool saveGame(const GameState* game, const string& filename) {
     if (saveMazeToFile(game->maze, filename, game->player, game->moves)) {
         cout << "Игра успешно сохранена в файл: " << filename << endl;
@@ -264,10 +310,11 @@ bool saveGame(const GameState* game, const string& filename) {
         return false;
     }
 }
-// игровая логика передвижения
+
 void playGame(GameState* game) {
     char input;
     bool gameOver = false;
+    
     while (!gameOver) {
         displayMaze(game->maze, game->player);
         cout << "\nХодов сделано: " << game->moves << endl;
@@ -277,11 +324,14 @@ void playGame(GameState* game) {
         cout << "Введите команду: ";
         cin >> input;
         cin.ignore(numeric_limits<streamsize>::max(), '\n');
+        
         if (input == 'e' || input == 'E') {
             saveGame(game);
             continue;
         }
+        
         Point newPos = game->player;
+        
         switch (input) {
             case 'w':
             case 'W':
@@ -312,11 +362,13 @@ void playGame(GameState* game) {
                 cin.get();
                 continue;
         }
+        
         if (isValidMove(game->maze, newPos)) {
             markVisited(game->maze, game->player);
             game->player = newPos;
             game->moves++;
             markVisited(game->maze, game->player);
+            
             if (game->player.x == game->maze->finish.x && game->player.y == game->maze->finish.y) {
                 gameOver = true;
             }
@@ -326,6 +378,7 @@ void playGame(GameState* game) {
             cin.get();
         }
     }
+    
     displayMaze(game->maze, game->player);
     cout << "\n================================" << endl;
     cout << "ПОЗДРАВЛЯЕМ! Вы прошли лабиринт!" << endl;
@@ -348,7 +401,7 @@ void playGame(GameState* game) {
     cout << "Нажмите любую клавишу для продолжения..." << endl;
     cin.get();
 }
-// отчистка игры
+
 void freeGame(GameState* game) {
     if (game) {
         freeMaze(game->maze);
