@@ -5,11 +5,9 @@
 #ifdef _WIN64
 #include <windows.h>
 #endif
-
 using namespace std;
 
 // Функции пользовательского интерфейса
-// правила
 void showRules() {
     system("cls");
     cout << "================================" << endl;
@@ -48,12 +46,17 @@ void showRules() {
     cout << "  - Минимальный путь рассчитывается волновым алгоритмом" << endl;
     cout << "  - Вы можете видеть свой пройденный путь" << endl;
     cout << endl;
+    cout << "ПОДСЧЕТ ОЧКОВ:" << endl;
+    cout << "  - Считается количество ваших ходов" << endl;
+    cout << "  - Отображается минимальное количество ходов (волновой алгоритм)" << endl;
+    cout << "  - Чем ближе ваш результат к минимальному, тем лучше!" << endl;
+    cout << endl;
     cout << "================================" << endl;
     cout << "Нажмите любую клавишу для возврата в меню..." << endl;
     cin.ignore();
     cin.get();
 }
-// ввод размера
+
 void getMazeDimensions(int& width, int& height) {
     system("cls");
     cout << "================================" << endl;
@@ -110,7 +113,7 @@ void getMazeDimensions(int& width, int& height) {
     cin.ignore();
     cin.get();
 }
-// сохранения в файле
+
 bool loadSavedGame() {
     system("cls");
     cout << "================================" << endl;
@@ -164,6 +167,7 @@ bool loadSavedGame() {
     return true;
 }
 
+// Главная функция программы
 int main() {
     #ifdef _WIN64
     SetConsoleOutputCP(CP_UTF8);
@@ -193,9 +197,9 @@ int main() {
         
         ifstream saveFile("save.txt");
         if (saveFile.good()) {
-            cout << "Доступно сохранение: save.txt" << endl; // есть сохранение
+            cout << "Доступно сохранение: save.txt" << endl;
         } else {
-            cout << "Сохраненная игра отсутствует" << endl; // нет сохранения
+            cout << "Сохраненная игра отсутствует" << endl;
         }
         saveFile.close();
         
